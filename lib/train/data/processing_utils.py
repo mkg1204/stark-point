@@ -422,5 +422,6 @@ def generate_point(bbox, mode='center'):
     elif mode == 'gaussian':
         offset = np.random.normal(0.5, 0.15, 2).clip(0, 0.99)
         point = torch.tensor([bbox[0] + offset[0] * bbox[2], bbox[1] + offset[1] * bbox[3]], device=bbox.device)
+    point = torch.clamp(point, 0, 0.99)
     point = point.unsqueeze(0)
     return point

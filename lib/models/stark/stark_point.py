@@ -61,7 +61,7 @@ class STARK_P(nn.Module):
         point_query = None
         if point is not None:
             bs, _, h, w = pos[-1].shape
-            x, y = (w * point[:, 0]).floor().long(), (h * point[:, 1]).floor().long()     # [bs], [bs]
+            x, y = (w * point[:, 0]).floor().long().clamp(0, w-1), (h * point[:, 1]).floor().long().clamp(0, h-1)     # [bs], [bs]
             index = y * w + x   # [bs]
             b_index = torch.tensor(range(bs), dtype=torch.long, device=index.device)
             feat_emd = feat_dict["feat"][index, b_index]    # [bs, c]
