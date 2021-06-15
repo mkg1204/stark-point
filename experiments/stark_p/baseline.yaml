@@ -1,7 +1,7 @@
 DATA:
   MAX_SAMPLE_INTERVAL: 200
   MAX_SAMPLE_INTERVAL_WITHIN_CLIP: 25
-  GAUSSIAN_MASK_SIGMA: 0.3    # 生成gaussian mask 用到的sigma
+  GAUSSIAN_MASK_SIGMA: 0.12    # 生成gaussian mask 用到的sigma
   SAMPLE_MODE: causal
   RESIZE_SIZE:
   - 544

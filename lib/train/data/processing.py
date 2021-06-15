@@ -99,7 +99,7 @@ class STARKPProcessing(BaseProcessing):
         if visible:
             x = point[0] * self.output_sz[0]
             y = point[1] * self.output_sz[1]
-            gauss = torch.exp(-0.5 * (torch.pow((self.pre_defined_mesh['x'] - x) / (self.gm_sigma * self.output_sz[0]), 2) + \
+            gauss = torch.exp(-0.5 * (torch.pow((self.pre_defined_mesh['x'] - x) / (self.gm_sigma * self.output_sz[1]), 2) + \
                                     torch.pow((self.pre_defined_mesh['y'] - y) / (self.gm_sigma * self.output_sz[1]), 2)))
         else:
             gauss = torch.zeros(self.output_sz[1], self.output_sz[0])
