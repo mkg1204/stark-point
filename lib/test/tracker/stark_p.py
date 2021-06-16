@@ -9,6 +9,12 @@ from lib.models.stark import build_stark_p
 from lib.test.tracker.stark_p_utils import Preprocessor
 from lib.utils.box_ops import clip_box
 
+# visual
+from lib.utils.visualizer import Visualizer
+import numpy as np
+viser = Visualizer()
+visual_root = '/home/zikun/data/mkg/Projects/Stark/visualization'
+
 
 class STARK_P(BaseTracker):
     def __init__(self, params, dataset_name):
@@ -23,10 +29,7 @@ class STARK_P(BaseTracker):
         # for debug
         self.debug = False
         self.frame_id = 0
-        if self.debug:
-            self.save_dir = "debug"
-            if not os.path.exists(self.save_dir):
-                os.makedirs(self.save_dir)
+
         # for save boxes from all queries
         self.save_all_boxes = params.save_all_boxes 
         
@@ -48,9 +51,14 @@ class STARK_P(BaseTracker):
         # generate template
         processed_image, att_mask, gaussian_mask = sample_frame(image, point, output_sz=self.params.output_sz, require_gauss_mask=True,
                                                                  pre_defined_mesh=self.pre_defined_mesh, gm_sigma=self.gm_sigma, params=self.params)
+
+        # visualize
+        if self.debug:
+            self.visualize_init_frame(processed_image, att_mask, gaussian_mask, norm_box, point)
+
         template = self.preprocessor.process(processed_image, att_mask)
         template_gauss_mask = gaussian_mask.to(torch.float).unsqueeze(0).cuda()
-        print(template.tensors.shape, template.mask.shape, template_gauss_mask.shape, point.shape)
+
         # forward backbone
         with torch.no_grad():
             self.template_dict, self.point_query = self.network.forward_backbone(input=template, point=point.unsqueeze(0), gauss_mask=template_gauss_mask)
@@ -78,22 +86,18 @@ class STARK_P(BaseTracker):
             # run the transformer
             out_dict, _, _ = self.network.forward_transformer(seq_dict=seq_dict, point_embed=self.point_query, run_box_head=True)
         
-        pred_boxes = out_dict['pred_boxes'].view(-1, 4)
+        pred_boxes = out_dict['pred_boxes'].view(-1, 4) # [1, 4]
         # Baseline: Take the mean of all pred boxes as the final result
         pred_box = (pred_boxes.mean(dim=0)).tolist()  # (cx, cy, w, h) [0,1]
         pred_box[0], pred_box[2] = pred_box[0] * self.image_w, pred_box[2] * self.image_w
         pred_box[1], pred_box[3] = pred_box[1] * self.image_h, pred_box[3] * self.image_h
         # get the final box result
         self.state = clip_box(pred_box, self.image_h, self.image_w, margin=10)
-        print(self.frame_id, self.state)
 
         #for debug
         if self.debug and self.state is not None:
-            x1, y1, w, h = self.state
-            image_BGR = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-            cv2.rectangle(image_BGR, (int(x1),int(y1)), (int(x1+w),int(y1+h)), color=(0,0,255), thickness=2)
-            save_path = os.path.join(self.save_dir, "%04d.jpg" % self.frame_id)
-            cv2.imwrite(save_path, image_BGR)
+            self.visualize_result_frame(image, self.state)
+
         if self.save_all_boxes:
             '''save all predictions'''
             all_boxes = pred_boxes # TODO: map boxes back
@@ -109,6 +113,25 @@ class STARK_P(BaseTracker):
         mesh_y, mesh_x = torch.meshgrid(y, x)
         return {'x': mesh_x, 'y':mesh_y}
     
+
+    
+    def visualize_init_frame(self, processed_image, att_mask, gaussian_mask, norm_box, point):
+        '''visualize init image, att mask and gaussian maks'''
+        path = visual_root + '/test/'
+        bbox = torch.stack([norm_box.view(2,2)[:, 0] * self.params.output_sz[0], norm_box.view(2,2)[:, 1] * self.params.output_sz[1]], dim=-1).view(-1)
+        point_ = torch.stack([point[0] * self.params.output_sz[0], point[1] * self.params.output_sz[1]], dim=-1)
+        viser.visual_numpy_image_with_box(processed_image, bbox, output_size=self.params.output_sz, point=point_, path=path, name='init frame')
+        att_mask_image = np.stack([att_mask, att_mask, att_mask], axis=-1).astype(np.uint8)
+        viser.visual_numpy_image_with_box(att_mask_image, bbox, att_mask_image.shape[:2], point=point_, path=path, name='att mask')
+        viser.visualize_single_map(gaussian_mask.unsqueeze(0), (gaussian_mask.shape[-1], gaussian_mask.shape[-2]), path=path, name='gauss mask')
+    
+    def visualize_result_frame(self, image, box):
+        '''visual tracking result'''
+        x1, y1, w, h = box
+        image_BGR = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        cv2.rectangle(image_BGR, (int(x1),int(y1)), (int(x1+w),int(y1+h)), color=(0,0,255), thickness=2)
+        save_path = os.path.join(visual_root + '/test/', "%04d.jpg" % self.frame_id)
+        cv2.imwrite(save_path, image_BGR)
 
 def get_tracker_class():
     return STARK_P

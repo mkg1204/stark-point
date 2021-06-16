@@ -395,7 +395,7 @@ def _get_gaussian_map(point, output_sz, pre_defined_mesh, gm_sigma, visible=True
     if visible:
         x = point[0] * output_sz[0]
         y = point[1] * output_sz[1]
-        gauss = torch.exp(-0.5 * (torch.pow((pre_defined_mesh['x'] - x) / (gm_sigma * output_sz[0]), 2) + \
+        gauss = torch.exp(-0.5 * (torch.pow((pre_defined_mesh['x'] - x) / (gm_sigma * output_sz[1]), 2) + \
                                   torch.pow((pre_defined_mesh['y'] - y) / (gm_sigma * output_sz[1]), 2)))
     else:
         gauss = torch.zeros(output_sz[1], output_sz[0])

@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from torchvision.models.utils import load_state_dict_from_url
@@ -135,8 +136,11 @@ class ResNet(nn.Module):
 def _resnet(arch, block, layers, pretrained, progress, **kwargs):
     model = ResNet(block, layers, **kwargs)
     if pretrained:
-        state_dict = load_state_dict_from_url(model_urls[arch],
-                                              progress=progress)
+        # state_dict = load_state_dict_from_url(model_urls[arch], progress=progress)
+        '''mkg 2021.6.16 load resnet50 from local'''
+        path = os.path.join(os.path.abspath('.'), 'lib/models/resnet50.pth')
+        print('load resnet50 from {}.'.format(path))
+        state_dict = torch.load(path)
         try:
             model.load_state_dict(state_dict)
         except:
