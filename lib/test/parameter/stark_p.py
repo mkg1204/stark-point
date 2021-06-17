@@ -21,6 +21,7 @@ def parameters(yaml_name: str):
     # Network checkpoint path
     params.checkpoint = os.path.join(save_dir, "checkpoints/train/stark_p/%s/STARK_P_ep%04d.pth.tar" %
                                      (yaml_name, cfg.TEST.EPOCH))       # 'checkpoints/train/stark_p/baseline/___.tar'
+    print('load from: {}'.format(params.checkpoint))
 
     # whether to save boxes from all queries
     params.save_all_boxes = False

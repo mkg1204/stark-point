@@ -74,6 +74,8 @@ class STARK_P(BaseTracker):
         '''track a frame'''
         # generate search
         self.frame_id += 1
+        if self.frame_id % 200 == 0:
+            print('frame id:{}'.format(self.frame_id))
         processed_image, att_mask, _ = sample_frame(image, self.state, output_sz=self.params.output_sz, require_gauss_mask=False)   # 感觉可以用上一帧的中心生成gauss mask
         search = self.preprocessor.process(processed_image, att_mask)
 
@@ -89,6 +91,8 @@ class STARK_P(BaseTracker):
         pred_boxes = out_dict['pred_boxes'].view(-1, 4) # [1, 4]
         # Baseline: Take the mean of all pred boxes as the final result
         pred_box = (pred_boxes.mean(dim=0)).tolist()  # (cx, cy, w, h) [0,1]
+        pred_box[0] -= pred_box[2] / 2
+        pred_box[1] -= pred_box[3] / 2
         pred_box[0], pred_box[2] = pred_box[0] * self.image_w, pred_box[2] * self.image_w
         pred_box[1], pred_box[3] = pred_box[1] * self.image_h, pred_box[3] * self.image_h
         # get the final box result
@@ -117,7 +121,7 @@ class STARK_P(BaseTracker):
     
     def visualize_init_frame(self, processed_image, att_mask, gaussian_mask, norm_box, point):
         '''visualize init image, att mask and gaussian maks'''
-        path = visual_root + '/test/'
+        path = visual_root + '/test/epoch300/10/'
         bbox = torch.stack([norm_box.view(2,2)[:, 0] * self.params.output_sz[0], norm_box.view(2,2)[:, 1] * self.params.output_sz[1]], dim=-1).view(-1)
         point_ = torch.stack([point[0] * self.params.output_sz[0], point[1] * self.params.output_sz[1]], dim=-1)
         viser.visual_numpy_image_with_box(processed_image, bbox, output_size=self.params.output_sz, point=point_, path=path, name='init frame')
@@ -130,7 +134,7 @@ class STARK_P(BaseTracker):
         x1, y1, w, h = box
         image_BGR = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         cv2.rectangle(image_BGR, (int(x1),int(y1)), (int(x1+w),int(y1+h)), color=(0,0,255), thickness=2)
-        save_path = os.path.join(visual_root + '/test/', "%04d.jpg" % self.frame_id)
+        save_path = os.path.join(visual_root + '/test/epoch300/10/', "%04d.jpg" % self.frame_id)
         cv2.imwrite(save_path, image_BGR)
 
 def get_tracker_class():
