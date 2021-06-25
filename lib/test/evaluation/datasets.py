@@ -7,6 +7,7 @@ DatasetInfo = namedtuple('DatasetInfo', ['module', 'class_name', 'kwargs'])
 pt = "lib.test.evaluation.%sdataset"  # Useful abbreviations to reduce the clutter
 
 dataset_dict = dict(
+    otb=DatasetInfo(module=pt % "otb", class_name="OTBDataset", kwargs=dict()),
     trackingnet=DatasetInfo(module=pt % "trackingnet", class_name="TrackingNetDataset", kwargs=dict()),
     got10k_test=DatasetInfo(module=pt % "got10k", class_name="GOT10KDataset", kwargs=dict(split='test')),
     got10k_val=DatasetInfo(module=pt % "got10k", class_name="GOT10KDataset", kwargs=dict(split='val')),
@@ -34,3 +35,5 @@ def get_dataset(*args):
     for name in args:
         dset.extend(load_dataset(name))
     return dset
+
+

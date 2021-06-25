@@ -117,9 +117,9 @@ def build_box_head(cfg, train_flag):
             stride = 8
         # feat_sz = int(cfg.DATA.SEARCH.SIZE / stride)
         if train_flag:
-            feat_sz = [int(size / stride) for size in cfg.DATA.RESIZE_SIZE]
+            feat_sz = [int(size / stride) for size in cfg.DATA.SEARCH.RESIZE_SIZE]
         else:
-            feat_sz = [int(size / stride) for size in cfg.TEST.RESIZE_SIZE]
+            feat_sz = [int(size / stride) for size in cfg.TEST.SEARCH.RESIZE_SIZE]
         corner_head = Corner_Predictor(inplanes=cfg.MODEL.HIDDEN_DIM, channel=256,
                                        feat_sz=feat_sz, stride=stride)
         return corner_head

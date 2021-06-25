@@ -35,6 +35,7 @@ class STARK_P(nn.Module):
             self.feat_len_s = int(box_head.feat_w * box_head.feat_h)
         self.use_gauss = use_gauss
 
+
     def forward(self, img=None, point=None, seq_dict=None, point_embed=None, mode="backbone", gauss_mask=None, run_box_head=True, run_cls_head=False):
         if mode == "backbone":
             return self.forward_backbone(img, point, gauss_mask)
@@ -71,15 +72,22 @@ class STARK_P(nn.Module):
         else:
             return feat_dict
     
-    def forward_transformer(self, seq_dict, point_embed, run_box_head=True, run_cls_head=False):
+    def forward_transformer(self, seq_dict, point_embed, run_box_head=True, run_cls_head=False, need_att_map=False):
         if self.aux_loss:
             raise ValueError("Deep supervision is not supported.")
         # Forward the transformer encoder and decoder
-        output_embed, enc_mem = self.transformer(seq_dict["feat"], seq_dict["mask"], point_embed, self.query_embed.weight,
-                                                 seq_dict["pos"], return_encoder_output=True)
+        if need_att_map:
+            output_embed, enc_mem, att_maps_t, att_maps_s = self.transformer(seq_dict["feat"], seq_dict["mask"], point_embed, self.query_embed.weight,
+                                                                         seq_dict["pos"], return_encoder_output=True, feat_len_s=self.feat_len_s, need_att_map=need_att_map)
+        else:
+            output_embed, enc_mem = self.transformer(seq_dict["feat"], seq_dict["mask"], point_embed, self.query_embed.weight,
+                                                     seq_dict["pos"], return_encoder_output=True, feat_len_s=self.feat_len_s, need_att_map=need_att_map)
         # Forward the corner head
         out, outputs_coord = self.forward_box_head(output_embed, enc_mem)
-        return out, outputs_coord, output_embed
+        if need_att_map:
+            return out, outputs_coord, output_embed, att_maps_t, att_maps_s
+        else:
+            return out, outputs_coord, output_embed
 
     def forward_box_head(self, hs, memory):
         """
@@ -131,10 +139,10 @@ class STARK_P(nn.Module):
         return [{'pred_boxes': b}
                 for b in outputs_coord[:-1]]
 
-def build_stark_p(cfg):
+def build_stark_p(cfg, train_flag=True):
     backbone = build_backbone(cfg)  # backbone and positional encoding are built together
     transformer = build_transformer(cfg)
-    box_head = build_box_head(cfg, True)
+    box_head = build_box_head(cfg, train_flag)
     model = STARK_P(
         backbone,
         transformer,

@@ -8,8 +8,26 @@ from lib.test.evaluation import get_dataset, trackerlist
 trackers = []
 
 
-trackers.extend(trackerlist(name='stark_st', parameter_name='baseline_R101', dataset_name='lasot',
-                            run_ids=None, display_name='STARK-ST101'))
+# trackers.extend(trackerlist(name='stark_st', parameter_name='baseline_R101', dataset_name='lasot',
+#                             run_ids=None, display_name='STARK-ST101'))
+
+# trackers.extend(trackerlist(name='stark_p', parameter_name='baseline', dataset_name='otb',
+#                             run_ids=5, display_name='STARK-P'))
+# trackers.extend(trackerlist(name='stark_s', parameter_name='baseline', dataset_name='otb',
+#                             run_ids=6, display_name='STARK-S50'))
+
+trackers.extend(trackerlist(name='stark_p', parameter_name='baseline', dataset_name='lasot',
+                            run_ids=1, display_name='STARK-P'))
+trackers.extend(trackerlist(name='stark_p_local', parameter_name='baseline', dataset_name='lasot',
+                            run_ids=7, display_name='STARK-P-LOCAL'))
+trackers.extend(trackerlist(name='stark_s', parameter_name='baseline', dataset_name='lasot',
+                            run_ids=None, display_name='STARK-S50'))
+trackers.extend(trackerlist(name='stark_st', parameter_name='baseline', dataset_name='lasot',
+                            run_ids=1, display_name='STARK-ST50'))
+
+
+
+
 
 dataset = get_dataset('lasot')
 plot_results(trackers, dataset, 'LaSOT', merge_results=True, plot_types=('success', 'norm_prec'),

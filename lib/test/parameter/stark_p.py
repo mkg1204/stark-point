@@ -15,7 +15,9 @@ def parameters(yaml_name: str):
     print("test config: ", cfg)
 
     # some params
-    params.output_sz = cfg.TEST.RESIZE_SIZE
+    params.template_sz = cfg.TEST.TEMPLATE.RESIZE_SIZE
+    params.search_factor = cfg.TEST.SEARCH.CROP_FACTOR
+    params.search_sz = cfg.TEST.SEARCH.RESIZE_SIZE
     params.point_gen_mode = cfg.TEST.POINT_GEN_MODE
 
     # Network checkpoint path

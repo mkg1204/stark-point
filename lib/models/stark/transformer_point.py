@@ -4,7 +4,7 @@ from typing import Optional, List
 import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
-
+import cv2 as cv
 
 def check_inf(tensor):
     return torch.isinf(tensor.detach()).any()
@@ -74,7 +74,7 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, feat, mask, point_embed, query_embed, pos_embed, mode="all", return_encoder_output=False):
+    def forward(self, feat, mask, point_embed, query_embed, pos_embed, mode="all", return_encoder_output=False, feat_len_s=646, need_att_map=False):
         """
         mkg 2021.6.9 Use two decoder to generate features used for bbox predict
         :param feat: (2HW, bs, C)             features
@@ -84,6 +84,7 @@ class Transformer(nn.Module):
         :param pos_embed: (2HW, bs, C)        postional embedding
         :param mode: run the whole transformer or encoder only
         :param return_encoder_output: whether to return the output of encoder (together with decoder)
+        :param need_att_map: whether need attention map of the decoder
         :return:
         """
         assert mode in ["all", "encoder"]
@@ -95,40 +96,57 @@ class Transformer(nn.Module):
         if mode == "encoder":
             return memory
         elif mode == "all":
+            # 6.18 template search大小不同时
             # 拆分template和search的特征
-            # TODO: template和search大小不一致时
-            feat_sz = memory.shape[0] // 2   # template和search的大小是一样的, 只有一张template的情况下
-            memory_t, memory_s = memory[:feat_sz], memory[feat_sz:]     # (HW, bs, C)
-            mask_t, mask_s = mask[:, :feat_sz], mask[:, feat_sz:]       # (bs, HW)
-            pos_t, pos_s = pos_embed[:feat_sz], pos_embed[feat_sz:]     # (HW, bs, C) 
+            feat_len_t = memory.shape[0] - feat_len_s
+            memory_t, memory_s = memory[:feat_len_t], memory[feat_len_t:]     # (HW, bs, C), (hw, bs, C)
+            mask_t, mask_s = mask[:, :feat_len_t], mask[:, feat_len_t:]       # (bs, HW), (bs, hw)
+            pos_t, pos_s = pos_embed[:feat_len_t], pos_embed[feat_len_t:]     # (HW, bs, C), (hw, bs, C)
             # Decoder T
             point_embed = point_embed.unsqueeze(0) # (B, C) --> (1, B, C) 只有一个query
             if self.decoder_t is not None:
                 tgt = torch.zeros_like(point_embed)
-                instance_feat = self.decoder_t(tgt, memory_t, memory_key_padding_mask=mask_t,
-                                               pos=pos_t, query_pos=point_embed)    # (1, 1, B, C)
+                if need_att_map:
+                    instance_feat, att_maps_t = self.decoder_t(tgt, memory_t, memory_key_padding_mask=mask_t,
+                                                               pos=pos_t, query_pos=point_embed, need_att_map=True)    # (1, 1, B, C)
+                else:
+                    instance_feat = self.decoder_t(tgt, memory_t, memory_key_padding_mask=mask_t,
+                                                   pos=pos_t, query_pos=point_embed, need_att_map=False)
             else:
-                instance_feat = point_embed.unsqueeze(0)
-            
+                # instance_feat = point_embed.unsqueeze(0)
+                instance_feat = None
             # Decoder S
             assert len(query_embed.size()) in [2, 3]
             if len(query_embed.size()) == 2:
                 bs = feat.size(1)
                 query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)  # (N,C) --> (N,1,C) --> (N,B,C)
             num_queries = query_embed.shape[0]
-            instance_feat = instance_feat.squeeze(0).repeat(num_queries, 1, 1)     # (1, 1, B, C) --> (1, B, C) --> (N, B, C)
-            instance_feat = instance_feat + query_embed     # 计算Decoder S的query
+            if instance_feat is not None:
+                instance_feat = instance_feat.squeeze(0).repeat(num_queries, 1, 1)     # (1, 1, B, C) --> (1, B, C) --> (N, B, C)
+                instance_feat = instance_feat + query_embed     # 计算Decoder S的query
+            else:
+                instance_feat = query_embed
             if self.decoder_s is not None:
                 tgt = torch.zeros_like(instance_feat)
-                hs = self.decoder_s(tgt, memory_s, memory_key_padding_mask=mask_s,
-                                    pos=pos_s, query_pos=instance_feat)         # (1, N, B, C)
+                if need_att_map:
+                    hs, att_maps_s = self.decoder_s(tgt, memory_s, memory_key_padding_mask=mask_s,
+                                                    pos=pos_s, query_pos=instance_feat, need_att_map=True)         # (1, N, B, C)
+                else:
+                    hs = self.decoder_s(tgt, memory_s, memory_key_padding_mask=mask_s,
+                                        pos=pos_s, query_pos=instance_feat, need_att_map=False)         # (1, N, B, C)
             else:
                 hs = instance_feat.unsqueeze(0)
             # return
             if return_encoder_output:
-                return hs.transpose(1, 2), memory # (1, B, N, C)
+                if need_att_map:
+                    return hs.transpose(1, 2), memory, att_maps_t, att_maps_s # (1, B, N, C)
+                else:
+                    return hs.transpose(1, 2), memory
             else:
-                return hs.transpose(1, 2) # (1, B, N, C)
+                if need_att_map:
+                    return hs.transpose(1, 2), att_maps_t, att_maps_s
+                else:
+                    return hs.transpose(1, 2) # (1, B, N, C)
 
 
 class TransformerEncoder(nn.Module):
@@ -170,17 +188,28 @@ class TransformerDecoder(nn.Module):
                 tgt_key_padding_mask: Optional[Tensor] = None,
                 memory_key_padding_mask: Optional[Tensor] = None,
                 pos: Optional[Tensor] = None,
-                query_pos: Optional[Tensor] = None):
+                query_pos: Optional[Tensor] = None,
+                need_att_map = False):
         output = tgt
 
         intermediate = []
+        if need_att_map:
+            cross_att_map = []
 
         for layer in self.layers:
-            output = layer(output, memory, tgt_mask=tgt_mask,
-                           memory_mask=memory_mask,
-                           tgt_key_padding_mask=tgt_key_padding_mask,
-                           memory_key_padding_mask=memory_key_padding_mask,
-                           pos=pos, query_pos=query_pos)
+            if need_att_map:
+                output, att_map = layer(output, memory, tgt_mask=tgt_mask,
+                                        memory_mask=memory_mask,
+                                        tgt_key_padding_mask=tgt_key_padding_mask,
+                                        memory_key_padding_mask=memory_key_padding_mask,
+                                        pos=pos, query_pos=query_pos, need_att_map=need_att_map)
+                cross_att_map.append(att_map)
+            else:
+                output = layer(output, memory, tgt_mask=tgt_mask,
+                               memory_mask=memory_mask,
+                               tgt_key_padding_mask=tgt_key_padding_mask,
+                               memory_key_padding_mask=memory_key_padding_mask,
+                               pos=pos, query_pos=query_pos, need_att_map=need_att_map)
             if self.return_intermediate:
                 intermediate.append(self.norm(output))
 
@@ -192,8 +221,10 @@ class TransformerDecoder(nn.Module):
 
         if self.return_intermediate:
             return torch.stack(intermediate)
-
-        return output.unsqueeze(0)
+        if need_att_map:
+            return output.unsqueeze(0), cross_att_map
+        else:
+            return output.unsqueeze(0)
 
 
 class TransformerEncoderLayer(nn.Module):
@@ -301,7 +332,8 @@ class TransformerDecoderLayer(nn.Module):
                      tgt_key_padding_mask: Optional[Tensor] = None,
                      memory_key_padding_mask: Optional[Tensor] = None,
                      pos: Optional[Tensor] = None,
-                     query_pos: Optional[Tensor] = None):
+                     query_pos: Optional[Tensor] = None,
+                     need_att_map = False):
         # self-attention
         q = k = self.with_pos_embed(tgt, query_pos)  # Add object query to the query and key
         if self.divide_norm:
@@ -313,19 +345,32 @@ class TransformerDecoderLayer(nn.Module):
         tgt = self.norm1(tgt)
         # mutual attention
         queries, keys = self.with_pos_embed(tgt, query_pos), self.with_pos_embed(memory, pos)
+        # print("Decoder cross att: q-->{}, k-->{}".format(queries.shape, keys.shape))
         if self.divide_norm:
             queries = queries / torch.norm(queries, dim=-1, keepdim=True) * self.scale_factor
             keys = keys / torch.norm(keys, dim=-1, keepdim=True)
-        tgt2 = self.multihead_attn(query=queries,
-                                   key=keys,
-                                   value=memory, attn_mask=memory_mask,
-                                   key_padding_mask=memory_key_padding_mask)[0]
+        
+        if need_att_map:
+            tgt2, att_map = self.multihead_attn(query=queries,
+                                    key=keys,
+                                    value=memory, attn_mask=memory_mask,
+                                    key_padding_mask=memory_key_padding_mask)
+            att_map = att_map.unsqueeze(-1).view(att_map.shape[0], att_map.shape[1], 19, 34).detach().cpu().numpy()[0]    # [1, 1, 19, 34]
+        else:
+            tgt2 = self.multihead_attn(query=queries,
+                                       key=keys,
+                                       value=memory, attn_mask=memory_mask,
+                                       key_padding_mask=memory_key_padding_mask)[0]
+    
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
         tgt = tgt + self.dropout3(tgt2)
         tgt = self.norm3(tgt)
-        return tgt
+        if need_att_map:
+            return tgt, att_map
+        else:
+            return tgt
 
     def forward_pre(self, tgt, memory,
                     tgt_mask: Optional[Tensor] = None,
@@ -356,12 +401,13 @@ class TransformerDecoderLayer(nn.Module):
                 tgt_key_padding_mask: Optional[Tensor] = None,
                 memory_key_padding_mask: Optional[Tensor] = None,
                 pos: Optional[Tensor] = None,
-                query_pos: Optional[Tensor] = None):
+                query_pos: Optional[Tensor] = None,
+                need_att_map = False):
         if self.normalize_before:
             return self.forward_pre(tgt, memory, tgt_mask, memory_mask,
                                     tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos)
         return self.forward_post(tgt, memory, tgt_mask, memory_mask,
-                                 tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos)
+                                 tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos, need_att_map)
 
 
 def _get_clones(module, N):

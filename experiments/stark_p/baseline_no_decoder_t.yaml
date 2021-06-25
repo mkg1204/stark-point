@@ -1,11 +1,8 @@
 DATA:
   MAX_SAMPLE_INTERVAL: 200
   MAX_SAMPLE_INTERVAL_WITHIN_CLIP: 25
-  GAUSSIAN_MASK_SIGMA: 0.12    # 生成gaussian mask 用到的sigma
+  GAUSSIAN_MASK_SIGMA: 0.12
   SAMPLE_MODE: causal
-  RESIZE_SIZE:
-  - 544
-  - 304
   MEAN:
   - 0.485
   - 0.456
@@ -16,6 +13,9 @@ DATA:
     TRANSLATE_JITTER_ADJUST: 1.0
     SCALE_JITTER_BASE: 1.5
     SCALE_JITTER_ADJUST: 0.2
+    RESIZE_SIZE:
+    - 544
+    - 304
   STD:
   - 0.229
   - 0.224
@@ -26,6 +26,9 @@ DATA:
     TRANSLATE_JITTER_ADJUST: 0.0
     SCALE_JITTER_BASE: 0.0
     SCALE_JITTER_ADJUST: 0.0
+    RESIZE_SIZE:
+    - 544
+    - 304
   TRAIN:
     DATASETS_NAME:
     - LASOT
@@ -58,8 +61,8 @@ MODEL:
   POSITION_EMBEDDING: sine
   PREDICT_MASK: false
   TRANSFORMER:
-    DEC_T_LAYERS: 6   # layer numbers of decoder t
-    DEC_S_LAYERS: 6   # layer numbers of decoder s
+    DEC_T_LAYERS: 0
+    DEC_S_LAYERS: 6
     DIM_FEEDFORWARD: 2048
     DIVIDE_NORM: false
     DROPOUT: 0.1
@@ -70,14 +73,14 @@ TRAIN:
   BACKBONE_MULTIPLIER: 0.1
   BATCH_SIZE: 4
   DEEP_SUPERVISION: false
-  EPOCH: 300
+  EPOCH: 500
   FREEZE_BACKBONE_BN: true
   FREEZE_LAYERS:
   - conv1
   - layer1
   GIOU_WEIGHT: 2.0
   GRAD_CLIP_NORM: 0.1
-  POINT_GEN_MODE: gaussian  # how to generate the point: center, uniform or gaussian
+  POINT_GEN_MODE: gaussian
   L1_WEIGHT: 5.0
   LR: 0.0001
   LR_DROP_EPOCH: 200
@@ -90,15 +93,20 @@ TRAIN:
   VAL_EPOCH_INTERVAL: 20
   WEIGHT_DECAY: 0.0001
 TEST:
-  EPOCH: 300
+  EPOCH: 1
   NUM_TEMPLATE_FRAMES: 1
-  RESIZE_SIZE:
-  - 544
-  - 304
-  POINT_GEN_MODE: gaussian  # how to generate the point: center, uniform or gaussian
+  POINT_GEN_MODE: gaussian
   INIT_AUGMENTATION: False
   TEMPLATE:
+    RESIZE_SIZE:
+    - 544
+    - 304
     TRANSLATE_JITTER_BASE: 1.0
     TRANSLATE_JITTER_ADJUST: 0.5
     SCALE_JITTER_BASE: 0.5
     SCALE_JITTER_ADJUST: 0.25
+  SEARCH:
+    CROP_FACTOR: 5
+    RESIZE_SIZE:
+    - 544
+    - 304

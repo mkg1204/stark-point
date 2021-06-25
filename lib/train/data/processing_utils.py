@@ -377,6 +377,7 @@ def sample_frame(image, init_point, output_sz=[544, 304], mask=None, require_gau
     '''used for tracking, process init frame and search frame'''
     img_h, img_w = image.shape[:2]
     att_mask = np.zeros((img_h, img_w))
+    output_sz = tuple(output_sz)
     output_image = cv.resize(image, output_sz)
     output_att_mask = cv.resize(att_mask, output_sz).astype(np.bool_)
 
@@ -385,6 +386,64 @@ def sample_frame(image, init_point, output_sz=[544, 304], mask=None, require_gau
     else:
         gaussian_mask = None
     return output_image, output_att_mask, gaussian_mask
+
+
+def crop_search(image, bbox, search_area_factor, output_sz=[544, 304]):
+    '''crop search image by the center of bbox in last frame'''
+    x, y, w, h = bbox
+    ratio = output_sz[0] / output_sz[1]
+    crop_h = math.ceil(math.sqrt(w * h) * search_area_factor)
+    crop_w = math.ceil(crop_h * ratio)
+
+
+    '''baseline_006, 007
+    crop_w = math.ceil(math.sqrt(w * h) * search_area_factor)
+    crop_h = crop_w
+    ''' 
+    '''baseline_003
+    if w / h > ratio:
+        crop_h = math.ceil(w / ratio * search_area_factor)
+        crop_w = math.ceil(w * search_area_factor)
+    else:
+        crop_h = math.ceil(h * search_area_factor)
+        crop_w = math.ceil(h * ratio * search_area_factor)
+    '''
+
+    
+    if crop_h < 1 or crop_w < 1:
+        raise Exception('To small bounding box')
+    
+    x1 = round(x + 0.5 * w - crop_w * 0.5)
+    x2 = x1 + crop_w
+    y1 = round(y + 0.5 * h - crop_h * 0.5)
+    y2 = y1 + crop_h
+
+    x1_pad = max(0, -x1)
+    x2_pad = max(x2 - image.shape[1] + 1, 0)
+
+    y1_pad = max(0, -y1)
+    y2_pad = max(y2 - image.shape[0] + 1, 0)
+
+    im_crop = image[y1 + y1_pad : y2 - y2_pad, x1 + x1_pad : x2 - x2_pad, :]
+    im_crop_padded = cv.copyMakeBorder(im_crop, y1_pad, y2_pad, x1_pad, x2_pad, cv.BORDER_CONSTANT)
+
+    # att mask
+    H, W, _ = im_crop_padded.shape
+    att_mask = np.ones((H,W))
+    end_x, end_y = -x2_pad, -y2_pad
+    if y2_pad == 0:
+        end_y = None
+    if x2_pad == 0:
+        end_x = None
+    att_mask[y1_pad:end_y, x1_pad:end_x] = 0
+    
+    resize_factor_w = output_sz[0] / crop_w
+    resize_factor_h = output_sz[1] / crop_h
+    resize_factor = (resize_factor_w, resize_factor_h)
+    im_crop_padded = cv.resize(im_crop_padded, (output_sz[0], output_sz[1]))
+    att_mask = cv.resize(att_mask, (output_sz[0], output_sz[1])).astype(np.bool_)
+    return im_crop_padded, resize_factor, att_mask
+
 
 def _get_gaussian_map(point, output_sz, pre_defined_mesh, gm_sigma, visible=True):
     """point [tensor] - [cx, cy], normalized

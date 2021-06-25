@@ -3,7 +3,7 @@ class EnvironmentSettings:
         self.workspace_dir = '/home/zikun/data/mkg/Projects/Stark'    # Base directory for saving network checkpoints.
         self.tensorboard_dir = '/home/zikun/data/mkg/Projects/Stark/tensorboard'    # Directory for tensorboard files.
         self.pretrained_networks = '/home/zikun/data/mkg/Projects/Stark/pretrained_networks'
-        self.lasot_dir = '/home/zikun/data/mkg/Projects/Stark/data/lasot'
+        self.lasot_dir = '/home/zikun/data/mkg/Projects/Stark-point/data/lasot'
         self.got10k_dir = '/home/zikun/data/mkg/Projects/Stark/data/got10k'
         self.lasot_lmdb_dir = '/home/zikun/data/mkg/Projects/Stark/data/lasot_lmdb'
         self.got10k_lmdb_dir = '/home/zikun/data/mkg/Projects/Stark/data/got10k_lmdb'
