@@ -49,9 +49,10 @@ class STARKPActor(BaseActor):
             template_att_i = data['template_att'][i].view(-1, *data['template_att'].shape[2:])  # (batch, 304, 544) template mask
             if i == 0:
                 # add point as input
-                feat_dict = self.net(img=NestedTensor(template_img_i, template_att_i), point=data['template_point'][0], mode='backbone')
+                feat_dict, point_query = self.net(img=NestedTensor(template_img_i, template_att_i), point=data['template_point'][0], mode='backbone', 
+                                                  gauss_mask=data['template_gauss'][0])   # point_query [B, C]
             else:
-                feat_dict = self.net(img=NestedTensor(template_img_i, template_att_i), mode='backbone')
+                feat_dict = self.net(img=NestedTensor(template_img_i, template_att_i), mode='backbone', gauss_mask=data['template_gauss'][0])
             feat_dict_list.append(feat_dict)  # [HW, B, C], [B, HW], [HW, B, C]
 
         # process the search regions (t-th frame)
@@ -61,7 +62,7 @@ class STARKPActor(BaseActor):
 
         # run the transformer and compute losses
         seq_dict = merge_template_search(feat_dict_list)    # concat
-        out_dict, _, _ = self.net(seq_dict=seq_dict, mode="transformer", run_box_head=run_box_head, run_cls_head=run_cls_head)  # transformer and corner head
+        out_dict, _, _ = self.net(seq_dict=seq_dict, point_embed=point_query, mode="transformer", run_box_head=run_box_head, run_cls_head=run_cls_head)  # transformer and corner head
         # out_dict: (B, N, C), outputs_coord: (1, B, N, C), target_query: (1, B, N, C)
         return out_dict
 

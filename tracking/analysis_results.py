@@ -19,7 +19,9 @@ trackers = []
 trackers.extend(trackerlist(name='stark_p', parameter_name='baseline', dataset_name='lasot',
                             run_ids=1, display_name='STARK-P'))
 trackers.extend(trackerlist(name='stark_p_local', parameter_name='baseline', dataset_name='lasot',
-                            run_ids=7, display_name='STARK-P-LOCAL'))
+                            run_ids=4, display_name='STARK-P-LOCAL'))
+trackers.extend(trackerlist(name='stark_p_no_decoder_t', parameter_name='baseline', dataset_name='lasot',
+                            run_ids=8, display_name='STARK-P-NoDecoderT'))
 trackers.extend(trackerlist(name='stark_s', parameter_name='baseline', dataset_name='lasot',
                             run_ids=None, display_name='STARK-S50'))
 trackers.extend(trackerlist(name='stark_st', parameter_name='baseline', dataset_name='lasot',

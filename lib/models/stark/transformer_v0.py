@@ -26,7 +26,7 @@ class Transformer(nn.Module):
     Encoder: 同STARK
     DecoderT: 利用point在template中提取目标特征I
     DecoderS: 利用I在search中找到目标
-    ''' 
+    '''
     def __init__(self, d_model=512, nhead=8, num_encoder_layers=6, 
                  num_decoder_t_layers=6, num_decoder_s_layers=6, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False,
@@ -74,7 +74,7 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, feat, mask, query_embed, pos_embed, mode="all", return_encoder_output=False, feat_len_s=646, need_att_map=False):
+    def forward(self, feat, mask, point_embed, query_embed, pos_embed, mode="all", return_encoder_output=False, feat_len_s=646, need_att_map=False):
         """
         mkg 2021.6.9 Use two decoder to generate features used for bbox predict
         :param feat: (2HW, bs, C)             features
@@ -103,7 +103,7 @@ class Transformer(nn.Module):
             mask_t, mask_s = mask[:, :feat_len_t], mask[:, feat_len_t:]       # (bs, HW), (bs, hw)
             pos_t, pos_s = pos_embed[:feat_len_t], pos_embed[feat_len_t:]     # (HW, bs, C), (hw, bs, C)
             # Decoder T
-            point_embed = None
+            point_embed = point_embed.unsqueeze(0) # (B, C) --> (1, B, C) 只有一个query
             if self.decoder_t is not None:
                 tgt = torch.zeros_like(point_embed)
                 if need_att_map:
@@ -147,57 +147,6 @@ class Transformer(nn.Module):
                     return hs.transpose(1, 2), att_maps_t, att_maps_s
                 else:
                     return hs.transpose(1, 2) # (1, B, N, C)
-
-
-class TemplateDecoder(nn.Module):
-    '''
-    Use point embedding to query the template CNN feature, 
-    generate the attention mask to augment template feature.
-    '''
-    def __init__(self, d_model=512, nhead=8, num_decoder_layers=6,
-                 dim_feedforward=2048, dropout=0.1, activation="relu",
-                 normalize_before=False, return_intermediate_dec=False, divide_norm=False, feat_size=[19, 34]):
-        super().__init__()
-        # Decoder
-        decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
-                                                dropout, activation, normalize_before, divide_norm=divide_norm)
-        decoder_norm = nn.LayerNorm(d_model)
-        
-        if num_decoder_layers == 0:
-            self.decoder = None
-        else:
-            self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
-                                              return_intermediate=return_intermediate_dec)
-        
-        self._reset_parameters()
-        self.d_model = d_model
-        self.nhead = nhead
-        self.d_feed = dim_feedforward
-        self.feat_size = feat_size
-
-    def _reset_parameters(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def forward(self, feat, mask, point_embed, pos_embed):
-        """
-        :param feat: (HW, bs, C)        template CNN feature
-        :param mask: (bs, HW)           template att mask
-        :param point_embed: (B, C)      query with pos_emb and CNN feature
-        :param pos_embed: (HW, bs, C)   position embedding
-        return attention map of the last layer.
-        """
-        bs = point_embed.shape[0]
-        point_embed = point_embed.unsqueeze(0)  # (bs, C) --> (1, bs, C)
-        if self.decoder is not None:
-            tgt = torch.zeros_like(point_embed) # (1, bs, C)
-            _, att_maps = self.decoder(tgt, feat, memory_key_padding_mask=mask,
-                                       pos=pos_embed, query_pos=point_embed, need_att_map=True) # (bs, 1, HW) * num_layers
-            att_map = att_maps[-1]
-            return att_map.squeeze(1)   # (bs, HW)
-        else:
-            return torch.zeros_like(bs, self.feat_size[0] * self.feat_size[1])
 
 
 class TransformerEncoder(nn.Module):
@@ -406,7 +355,7 @@ class TransformerDecoderLayer(nn.Module):
                                     key=keys,
                                     value=memory, attn_mask=memory_mask,
                                     key_padding_mask=memory_key_padding_mask)
-            # att_map = att_map.unsqueeze(-1).view(att_map.shape[0], att_map.shape[1], 19, 34).detach().cpu().numpy()[0]    # [1, 1, 19, 34]
+            att_map = att_map.unsqueeze(-1).view(att_map.shape[0], att_map.shape[1], 19, 34).detach().cpu().numpy()[0]    # [1, 1, 19, 34]
         else:
             tgt2 = self.multihead_attn(query=queries,
                                        key=keys,
@@ -465,24 +414,6 @@ def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
-def build_template_decoder(cfg):
-    if cfg.MODEL.BACKBONE.DILATION is False:
-        stride = 16
-    else:
-        stride = 8
-    feat_sz = [int(size / stride) for size in cfg.DATA.TEMPLATE.RESIZE_SIZE]
-    return TemplateDecoder(
-        d_model=cfg.MODEL.HIDDEN_DIM,
-        dropout=cfg.MODEL.TRANSFORMER.DROPOUT,
-        nhead=cfg.MODEL.TRANSFORMER.NHEADS,
-        dim_feedforward=cfg.MODEL.TRANSFORMER.DIM_FEEDFORWARD,
-        num_decoder_layers=cfg.MODEL.TRANSFORMER.DEC_T_LAYERS,
-        normalize_before=cfg.MODEL.TRANSFORMER.PRE_NORM,
-        return_intermediate_dec=False,
-        divide_norm=cfg.MODEL.TRANSFORMER.DIVIDE_NORM,
-        feat_size=feat_sz
-    )
-
 def build_transformer(cfg):
     return Transformer(
         d_model=cfg.MODEL.HIDDEN_DIM,
@@ -490,7 +421,7 @@ def build_transformer(cfg):
         nhead=cfg.MODEL.TRANSFORMER.NHEADS,
         dim_feedforward=cfg.MODEL.TRANSFORMER.DIM_FEEDFORWARD,
         num_encoder_layers=cfg.MODEL.TRANSFORMER.ENC_LAYERS,
-        num_decoder_t_layers=0,
+        num_decoder_t_layers=cfg.MODEL.TRANSFORMER.DEC_T_LAYERS,
         num_decoder_s_layers=cfg.MODEL.TRANSFORMER.DEC_S_LAYERS,
         normalize_before=cfg.MODEL.TRANSFORMER.PRE_NORM,
         return_intermediate_dec=False,  # we use false to avoid DDP error,
@@ -507,3 +438,4 @@ def _get_activation_fn(activation):
     if activation == "glu":
         return F.glu
     raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
+    
